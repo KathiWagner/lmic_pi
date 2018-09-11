@@ -1,0 +1,14 @@
+[Unit]
+Description=Scan for people around and write to people.txt
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=cd /home/root/lmic_py/examples/grab-and-send/ && /usr/bin/python3 write_people_to_file.py
+
+[Install]
+WantedBy=multi-user.target

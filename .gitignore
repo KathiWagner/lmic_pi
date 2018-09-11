@@ -2,3 +2,6 @@
 *.creator.user
 *.includes
 *.files
+*.config
+*.vs
+lmic/*.o

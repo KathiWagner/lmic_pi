@@ -33,55 +33,32 @@
 #include <hal.h>
 #include <local_hal.h>
 
-// LoRaWAN Application identifier (AppEUI)
-// Not used in this example
-//static const u1_t APPEUI[8]  = { 0x02, 0x00, 0x00, 0x00, 0x00, 0xEE, 0xFF, 0xC0 };
-static const u1_t APPEUI[8]  = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x01, 0x1A, 0x0D };
 
-// LoRaWAN DevEUI, unique device ID (LSBF)
-// Not used in this example
-//static const u1_t DEVEUI[8]  = { 0x42, 0x42, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
-static const u1_t DEVEUI[8]  = { 0x19, 0x28, 0x37, 0x46, 0x55, 0x56, 0x47, 0x38 };
+// This EUI must be in little-endian format, so least-significant-byte
+// first. When copying an EUI from ttnctl output, this means to reverse
+// the bytes. For TTN issued EUIs the last bytes should be 0xD5, 0xB3,
+// 0x70.
+//static const u1_t APPEUI[8]={ 0x70, 0xB3, 0xD5, 0x12, 0x94, 0x19, 0x02, 0x20 };
+static const u1_t APPEUI[8]={ 0x20, 0x02, 0x19, 0x94, 0x12, 0xD5, 0xB3, 0x70 };
+void os_getArtEui (u1_t* buf) { memcpy(buf, APPEUI, 8);}
 
-// LoRaWAN NwkSKey, network session key
-// Use this key for The Things Network
-//static const u1_t DEVKEY[16] = { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C };
-static const u1_t DEVKEY[16] = { 0x8B, 0x1B, 0x66, 0x21, 0x93, 0x66, 0x3B, 0x65, 0x32, 0x91, 0x2F, 0x05, 0xF2, 0xB5, 0xA0, 0x8B };
+// This should also be in little endian format, see above.
+//static const u1_t DEVEUI[8]={ 0x0D, 0x1A, 0x01, 0xD0, 0x7E, 0xD5, 0xB3, 0x70 };
+static const u1_t DEVEUI[8]={ 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x01, 0x1A, 0x0D };
+void os_getDevEui (u1_t* buf) { memcpy(buf, DEVEUI, 8);}
 
-// LoRaWAN AppSKey, application session key
-// Use this key to get your data decrypted by The Things Network
-//static const u1_t ARTKEY[16] = { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C };
-static const u1_t ARTKEY[16] = { 0x8C, 0x6E, 0x17, 0x2F, 0x98, 0xB6, 0x4E, 0xED, 0x48, 0x13, 0xF0, 0xDE, 0xBB, 0x8B, 0x85, 0xD3 }
-;
-
-// LoRaWAN end-device address (DevAddr)
-// See http://thethingsnetwork.org/wiki/AddressSpace
-static const u4_t DEVADDR = 0x260112B1; // <-- Change this address for every node!
-
-//////////////////////////////////////////////////
-// APPLICATION CALLBACKS
-//////////////////////////////////////////////////
-
-// provide application router ID (8 bytes, LSBF)
-void os_getArtEui (u1_t* buf) {
-    memcpy(buf, APPEUI, 8);
-}
-
-// provide device ID (8 bytes, LSBF)
-void os_getDevEui (u1_t* buf) {
-    memcpy(buf, DEVEUI, 8);
-}
-
-// provide device key (16 bytes)
-void os_getDevKey (u1_t* buf) {
-    memcpy(buf, DEVKEY, 16);
-}
+// This key should be in big endian format (or, since it is not really a
+// number but a block of memory, endianness does not really apply). In
+// practice, a key taken from ttnctl can be copied as-is.
+// The key shown here is the semtech default key.
+static const u1_t APPKEY[16] = { 0x82, 0xE8, 0x70, 0xB5, 0xA1, 0x1F, 0x33, 0xDB, 0x06, 0xE9, 0xCF, 0x5E, 0xC1, 0xDE, 0x7E, 0x67 };
+void os_getDevKey (u1_t* buf) { memcpy(buf, APPKEY, 16);}
 
 u4_t cntr=0;
 u1_t senddata[] = {"No data yet!                               "};
 u4_t senddatalen = 0;
 long long lasttime = 0;
-//FILE* howmanyprocess;
+FILE* howmanyprocess;
 static osjob_t sendjob;
 
 // Pin mapping
@@ -92,61 +69,40 @@ lmic_pinmap pins = {
   .dio = {7,4,5}
 };
 
-void LMIC_setup() {
-    // Reset the MAC state. Session and pending data transfers will be discarded.
-    LMIC_reset();
-    // Set static session parameters. Instead of dynamically establishing a session
-    // by joining the network, precomputed session parameters are be provided.
-    LMIC_setSession (0x1, DEVADDR, (u1_t*)DEVKEY, (u1_t*)ARTKEY);
-    // Disable data rate adaptation
-    LMIC_setAdrMode(0);
-    // Disable link check validation
-    LMIC_setLinkCheckMode(0);
-    // Disable beacon tracking
-    LMIC_disableTracking ();
-    // Stop listening for downstream data (periodical reception)
-    LMIC_stopPingable();
-    // TTN uses SF9 for its RX2 window.
-    LMIC.dn2Dr = DR_SF9;
-    // Set data rate and transmit power (note: txpow seems to be ignored by the library)
-    LMIC_setDrTxpow(DR_SF9,14);
-    //
-}
-
 void onEvent (ev_t ev) {
     //debug_event(ev);
 
     switch(ev) {
             case EV_SCAN_TIMEOUT:
-                fprintf(stdout, "EV_SCAN_TIMEOUT");
+                fprintf(stdout, "EV_SCAN_TIMEOUT\n");
                 break;
             case EV_BEACON_FOUND:
-                fprintf(stdout, "EV_BEACON_FOUND");
+                fprintf(stdout, "EV_BEACON_FOUND\n");
                 break;
             case EV_BEACON_MISSED:
-                fprintf(stdout, "EV_BEACON_MISSED");
+                fprintf(stdout, "EV_BEACON_MISSED\n");
                 break;
             case EV_BEACON_TRACKED:
-                fprintf(stdout, "EV_BEACON_TRACKED");
+                fprintf(stdout, "EV_BEACON_TRACKED\n");
                 break;
             case EV_JOINING:
-                fprintf(stdout, "EV_JOINING");
+                fprintf(stdout, "EV_JOINING\n");
                 break;
             case EV_JOINED:
-                fprintf(stdout, "EV_JOINED");
+                fprintf(stdout, "EV_JOINED\n");
 
                 // Disable link check validation (automatically enabled
                 // during join, but not supported by TTN at this time).
                 LMIC_setLinkCheckMode(0);
                 break;
             case EV_RFU1:
-                fprintf(stdout, "EV_RFU1");
+                fprintf(stdout, "EV_RFU1\n");
                 break;
             case EV_JOIN_FAILED:
-                fprintf(stdout, "EV_JOIN_FAILED");
+                fprintf(stdout, "EV_JOIN_FAILED\n");
                 break;
             case EV_REJOIN_FAILED:
-                fprintf(stdout, "EV_REJOIN_FAILED");
+                fprintf(stdout, "EV_REJOIN_FAILED\n");
                 break;
             case EV_TXCOMPLETE:
                 // use this event to keep track of actual transmissions
@@ -160,23 +116,23 @@ void onEvent (ev_t ev) {
                 }
                 break;
             case EV_LOST_TSYNC:
-                fprintf(stdout, "EV_LOST_TSYNC");
+                fprintf(stdout, "EV_LOST_TSYNC\n");
                 break;
             case EV_RESET:
-                fprintf(stdout, "EV_RESET");
+                fprintf(stdout, "EV_RESET\n");
                 break;
             case EV_RXCOMPLETE:
                 // data received in ping slot
-                fprintf(stdout, "EV_RXCOMPLETE");
+                fprintf(stdout, "EV_RXCOMPLETE\n");
                 break;
             case EV_LINK_DEAD:
-                fprintf(stdout, "EV_LINK_DEAD");
+                fprintf(stdout, "EV_LINK_DEAD\n");
                 break;
             case EV_LINK_ALIVE:
-                fprintf(stdout, "EV_LINK_ALIVE");
+                fprintf(stdout, "EV_LINK_ALIVE\n");
                 break;
              default:
-                fprintf(stdout, "Unknown event");
+                fprintf(stdout, "Unknown event\n");
                 break;
     }
 }
@@ -186,28 +142,6 @@ static void do_send(osjob_t* j){
       fprintf(stdout, "[%x] (%ld) %s\n", hal_ticks(), t, ctime(&t));
 
       /* Gather data */
-     /* FILE* fp;
-      char buf[1024];
-
-      fp = popen("howmanypeoplearearound -a wlan0 --number --allmacaddresses", "r");
-      if (fp == NULL) {
-          printf("Failure running howmanypeoplearearound!");
-      }
-      // Get output line by line
-      bool numline = false;
-      bool numfound = false;
-      unsigned char numpeople;
-      while(fgets(buf, sizeof(buf), fp) != NULL) {
-          if(!numline) {
-              numline = true;
-          } else {
-              numpeople = atoi(buf);
-              printf("Found %d people\n", numpeople);
-              numfound = true;
-          }
-      }
-
-      pclose(fp); */
 
       FILE* fp;
       fp = fopen("people.txt", "r");
@@ -239,7 +173,7 @@ static void do_send(osjob_t* j){
       // Check if there is not a current TX/RX job running
     if (LMIC.opmode & (1 << 7)) {
       fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
-      LMIC_setup();
+      //LMIC_reset();
     } else if(senddatalen > 0) {
       // Prepare upstream data transmission at the next possible time.
       LMIC_setTxData2(1, senddata, senddatalen, 0);
@@ -257,7 +191,9 @@ void setup() {
 
   os_init();
 
-  LMIC_setup();
+  LMIC_setDrTxpow(DR_SF9,14);
+
+  LMIC_reset();
 }
 
 void loop() {
@@ -270,20 +206,20 @@ while(true) {
 
 }
 
-/*void initHandler(int dummy) {
+void intHandler(int dummy) {
     if(howmanyprocess != NULL) {
         pclose(howmanyprocess);
     }
     LMIC_shutdown();
     exit(0);
-}*/
+}
 
 
 int main() {
   setup();
 
-  //signal(SIGINT, initHandler);
-  //howmanyprocess = popen("python3 write_people_to_file.py", "r");
+  signal(SIGINT, intHandler);
+  howmanyprocess = popen("python3 write_people_to_file.py", "r");
 
   while (true) {
     loop();
