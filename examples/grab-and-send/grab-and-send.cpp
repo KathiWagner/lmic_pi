@@ -98,6 +98,21 @@ void LMIC_setup() {
     // Set static session parameters. Instead of dynamically establishing a session
     // by joining the network, precomputed session parameters are be provided.
     LMIC_setSession (0x1, DEVADDR, (u1_t*)DEVKEY, (u1_t*)ARTKEY);
+    //Get framecounters from persistent storage
+    FILE* fp = fopen("/framectrdata/framectrs.txt", "r");
+    char buf[1024];
+    if(fp != NULL) {
+        // Get output line by line
+        while(fgets(buf, sizeof(buf), fp) != NULL) {
+            char* pEnd;
+            LMIC.seqnoUp = (u4_t) strtol(buf, &pEnd, 10);
+            LMIC.seqnoDn = (u4_t) strtol(pEnd, NULL, 10);
+            fprintf(stdout, "Got up frames %u and downframes %u from file!\n", LMIC.seqnoUp, LMIC.seqnoDn);
+        }
+        fclose(fp);
+    } else {
+        fprintf(stdout, "Could not find stroed framecounters, starting with default 0!\n");
+    }
     // Disable data rate adaptation
     LMIC_setAdrMode(0);
     // Disable link check validation
@@ -106,6 +121,8 @@ void LMIC_setup() {
     LMIC_disableTracking ();
     // Stop listening for downstream data (periodical reception)
     LMIC_stopPingable();
+    //Set pingable
+    //LMIC_setPingable(1);
     // TTN uses SF9 for its RX2 window.
     LMIC.dn2Dr = DR_SF9;
     // Set data rate and transmit power (note: txpow seems to be ignored by the library)
@@ -113,70 +130,79 @@ void LMIC_setup() {
     //
 }
 
+void updateFramectrs() {
+    FILE* fp = fopen("/framectrdata/framectrs.txt", "w");
+    fprintf(fp, "%u %u", LMIC.seqnoUp, LMIC.seqnoDn);
+    fprintf(stdout, "Updated framecounters upframes %u, downframes %u\n", LMIC.seqnoUp, LMIC.seqnoDn);
+    fclose(fp);
+}
+
 void onEvent (ev_t ev) {
     //debug_event(ev);
 
     switch(ev) {
             case EV_SCAN_TIMEOUT:
-                fprintf(stdout, "EV_SCAN_TIMEOUT");
+                fprintf(stdout, "EV_SCAN_TIMEOUT\n");
                 break;
             case EV_BEACON_FOUND:
-                fprintf(stdout, "EV_BEACON_FOUND");
+                fprintf(stdout, "EV_BEACON_FOUND\n");
                 break;
             case EV_BEACON_MISSED:
-                fprintf(stdout, "EV_BEACON_MISSED");
+                fprintf(stdout, "EV_BEACON_MISSED\n");
                 break;
             case EV_BEACON_TRACKED:
-                fprintf(stdout, "EV_BEACON_TRACKED");
+                fprintf(stdout, "EV_BEACON_TRACKED\n");
                 break;
             case EV_JOINING:
-                fprintf(stdout, "EV_JOINING");
+                fprintf(stdout, "EV_JOINING\n");
                 break;
             case EV_JOINED:
-                fprintf(stdout, "EV_JOINED");
+                fprintf(stdout, "EV_JOINED\n");
 
                 // Disable link check validation (automatically enabled
                 // during join, but not supported by TTN at this time).
                 LMIC_setLinkCheckMode(0);
                 break;
             case EV_RFU1:
-                fprintf(stdout, "EV_RFU1");
+                fprintf(stdout, "EV_RFU1\n");
                 break;
             case EV_JOIN_FAILED:
-                fprintf(stdout, "EV_JOIN_FAILED");
+                fprintf(stdout, "EV_JOIN_FAILED\n");
                 break;
             case EV_REJOIN_FAILED:
-                fprintf(stdout, "EV_REJOIN_FAILED");
+                fprintf(stdout, "EV_REJOIN_FAILED\n");
                 break;
             case EV_TXCOMPLETE:
                 // use this event to keep track of actual transmissions
                 fprintf(stdout, "Event EV_TXCOMPLETE, time: %d\n", millis() / 1000);
                 if (LMIC.txrxFlags & TXRX_ACK) {
-                    fprintf(stdout, "Received ack");
+                    fprintf(stdout, "Received ack\n");
                 }
                 if(LMIC.dataLen) { // data received in rx slot after tx
                     //debug_buf(LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
                     fprintf(stdout, "Data Received!\n");
                 }
+                //update framecounters in persistent storage
+                updateFramectrs();
                 break;
             case EV_LOST_TSYNC:
-                fprintf(stdout, "EV_LOST_TSYNC");
+                fprintf(stdout, "EV_LOST_TSYNC\n");
                 break;
             case EV_RESET:
-                fprintf(stdout, "EV_RESET");
+                fprintf(stdout, "EV_RESET\n");
                 break;
             case EV_RXCOMPLETE:
                 // data received in ping slot
-                fprintf(stdout, "EV_RXCOMPLETE");
+                fprintf(stdout, "EV_RXCOMPLETE\n");
                 break;
             case EV_LINK_DEAD:
-                fprintf(stdout, "EV_LINK_DEAD");
+                fprintf(stdout, "EV_LINK_DEAD\n");
                 break;
             case EV_LINK_ALIVE:
-                fprintf(stdout, "EV_LINK_ALIVE");
+                fprintf(stdout, "EV_LINK_ALIVE\n");
                 break;
              default:
-                fprintf(stdout, "Unknown event");
+                fprintf(stdout, "Unknown event\n");
                 break;
     }
 }
