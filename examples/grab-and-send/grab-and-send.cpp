@@ -121,8 +121,6 @@ void LMIC_setup() {
     LMIC_disableTracking ();
     // Stop listening for downstream data (periodical reception)
     LMIC_stopPingable();
-    //Set pingable
-    //LMIC_setPingable(1);
     // TTN uses SF9 for its RX2 window.
     LMIC.dn2Dr = DR_SF9;
     // Set data rate and transmit power (note: txpow seems to be ignored by the library)
@@ -135,6 +133,41 @@ void updateFramectrs() {
     fprintf(fp, "%u %u", LMIC.seqnoUp, LMIC.seqnoDn);
     fprintf(stdout, "Updated framecounters upframes %u, downframes %u\n", LMIC.seqnoUp, LMIC.seqnoDn);
     fclose(fp);
+}
+
+void processReceivedData(char* data, int len) {
+    fprintf(stdout, "Got data bytes: ");
+    for(int i=0; i<len; i++) {
+        fprintf(stdout, "%02X", data[i]);
+    }
+    fprintf(stdout, "\n");
+
+    /* Turn bluetooth on or off */
+    if(strncmp(data, "bluetooth:", 10) == 0) {
+        char* token;
+        char  datacpy[len];
+        memcpy(datacpy, data, len);
+        //Get the 2nd part of the string
+        token = strtok(datacpy, " ");
+        token = strtok(NULL, " ");
+        if(token == NULL) {
+            fprintf(stdout, "Invalid command received via LoRaWAN!\n");
+        } else {
+            if(strncmp(token, "on", 2) == 0 || strncmp(token, "off", 3) == 0) {
+                //Valid command -> update command file
+                FILE* updatefp = fopen("/framectrdata/update.command", "w");
+                if(updatefp == NULL) {
+                    fprintf(stdout, "Error: Could not open /framectrdata/update.command for writing!\n");
+                } else {
+                    fprintf(updatefp, "%s", data);
+                    fprintf(stdout, "Wrote to command file: '%s'\n", data);
+                }
+                fclose(updatefp);
+            } else {
+                fprintf(stdout, "Invalid option '%s' for 'bluetooth' command received!\n", token);
+            }
+        }
+    }
 }
 
 void onEvent (ev_t ev) {
@@ -178,12 +211,15 @@ void onEvent (ev_t ev) {
                 if (LMIC.txrxFlags & TXRX_ACK) {
                     fprintf(stdout, "Received ack\n");
                 }
-                if(LMIC.dataLen) { // data received in rx slot after tx
-                    //debug_buf(LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
-                    fprintf(stdout, "Data Received!\n");
-                }
                 //update framecounters in persistent storage
                 updateFramectrs();
+                if(LMIC.dataLen) { // data received in rx slot after tx
+                    //debug_buf(LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
+                    char receivedData[LMIC.dataLen];
+                    memcpy(receivedData, LMIC.frame+LMIC.dataBeg, LMIC.dataLen);
+                    fprintf(stdout, "Data Received!\n");
+                    processReceivedData(receivedData, sizeof(receivedData));
+                }
                 break;
             case EV_LOST_TSYNC:
                 fprintf(stdout, "EV_LOST_TSYNC\n");
