@@ -342,6 +342,7 @@ while(true) {
 
 
 int main() {
+  setvbuf(stdout, NULL, _IONBF, 0);
   setup();
 
   //signal(SIGINT, initHandler);
