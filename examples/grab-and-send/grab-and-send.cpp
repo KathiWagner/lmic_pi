@@ -35,28 +35,23 @@
 
 // LoRaWAN Application identifier (AppEUI)
 // Not used in this example
-//static const u1_t APPEUI[8]  = { 0x02, 0x00, 0x00, 0x00, 0x00, 0xEE, 0xFF, 0xC0 };
-static const u1_t APPEUI[8]  = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x01, 0x1A, 0x0D };
+static u1_t APPEUI[8];
 
 // LoRaWAN DevEUI, unique device ID (LSBF)
 // Not used in this example
-//static const u1_t DEVEUI[8]  = { 0x42, 0x42, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
-static const u1_t DEVEUI[8]  = { 0x19, 0x28, 0x37, 0x46, 0x55, 0x56, 0x47, 0x38 };
+static u1_t DEVEUI[8];
 
 // LoRaWAN NwkSKey, network session key
 // Use this key for The Things Network
-//static const u1_t DEVKEY[16] = { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C };
-static const u1_t DEVKEY[16] = { 0x8B, 0x1B, 0x66, 0x21, 0x93, 0x66, 0x3B, 0x65, 0x32, 0x91, 0x2F, 0x05, 0xF2, 0xB5, 0xA0, 0x8B };
+static u1_t DEVKEY[16];
 
 // LoRaWAN AppSKey, application session key
 // Use this key to get your data decrypted by The Things Network
-//static const u1_t ARTKEY[16] = { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C };
-static const u1_t ARTKEY[16] = { 0x8C, 0x6E, 0x17, 0x2F, 0x98, 0xB6, 0x4E, 0xED, 0x48, 0x13, 0xF0, 0xDE, 0xBB, 0x8B, 0x85, 0xD3 }
-;
+static u1_t ARTKEY[16];
 
 // LoRaWAN end-device address (DevAddr)
 // See http://thethingsnetwork.org/wiki/AddressSpace
-static const u4_t DEVADDR = 0x260112B1; // <-- Change this address for every node!
+static u4_t DEVADDR; // <-- Change this address for every node!
 
 //////////////////////////////////////////////////
 // APPLICATION CALLBACKS
@@ -91,6 +86,82 @@ lmic_pinmap pins = {
   .rst = 0,  // Needed on RFM92/RFM95
   .dio = {7,4,5}
 };
+
+void readTTNConnectionLine(char* line, const char* id, u1_t* container, size_t containersize) {
+    char* pEnd;
+    fprintf(stdout, "%s ", id);
+    container[0] = (u1_t) strtol(line, &pEnd, 0);
+    fprintf(stdout, "%02X", container[0]);
+    for(size_t i=1; i<containersize; i++) {
+        container[i] = (u1_t) strtol(pEnd, &pEnd, 0);
+        fprintf(stdout, "%02X", container[i]);
+    }
+    fprintf(stdout, "\n");
+}
+
+/*
+ * File format: must contain 5 lines, each defining a distinct idientifier.
+ * Identifiers are APPEUI, DEVEUI, DEVKEY, ARTKEY, DEVADDR.
+ * Each identifier is followed by the actual ids as hex-digits (0xYY)
+ * separated by spaces.
+ * */
+int readTTNConnectionDataFromFile() {
+    FILE* fp = fopen("/framectrdata/ttnConnection.conf", "r");
+    if(fp == NULL) {
+        fprintf(stderr, "Error: Could not find /framectrdata/ttnConnection.conf! Exiting...\n");
+        return 1;
+    }
+    fprintf(stdout, "Reading TTN connection data...\n");
+    char* line;
+    size_t len = 0;
+    ssize_t read;
+    bool idreceived[5] = {false, false, false, false, false};
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if(strncmp(line, "APPEUI", 6) == 0) {
+            char tmp[len - 6];
+            memcpy(tmp, line + 6, len - 6);
+            readTTNConnectionLine(tmp, "APPEUI", APPEUI, sizeof(APPEUI));
+            idreceived[0] = true;
+        } else if(strncmp(line, "DEVEUI", 6) == 0) {
+            char tmp[len - 6];
+            memcpy(tmp, line + 6, len - 6);
+            readTTNConnectionLine(tmp, "DEVEUI", DEVEUI, sizeof(DEVEUI));
+            idreceived[1] = true;
+        } else if(strncmp(line, "DEVKEY", 6) == 0) {
+            char tmp[len - 6];
+            memcpy(tmp, line + 6, len - 6);
+            readTTNConnectionLine(tmp, "DEVKEY", DEVKEY, sizeof(DEVKEY));
+            idreceived[2] = true;
+        } else if(strncmp(line, "ARTKEY", 6) == 0) {
+            char tmp[len - 6];
+            memcpy(tmp, line + 6, len - 6);
+            readTTNConnectionLine(tmp, "ARTKEY", ARTKEY, sizeof(ARTKEY));
+            idreceived[3] = true;
+        } else if(strncmp(line, "DEVADDR", 7) == 0) {
+            u1_t tempdevaddr[4];
+            char tmp[len - 7];
+            memcpy(tmp, line + 7, len - 7);
+            readTTNConnectionLine(tmp, "DEVADDR", tempdevaddr, sizeof(tempdevaddr));
+            DEVADDR = (u4_t)tempdevaddr[3] | (u4_t)tempdevaddr[2] << 8
+                | (u4_t)tempdevaddr[1] << 16 | (u4_t)tempdevaddr[0] << 24;
+
+            idreceived[4] = true;
+        } else {
+            fprintf(stderr, "Error: Unknown id in line %s\n", line);
+        }
+    }
+
+    fclose(fp);
+    if (line) {
+        free(line);
+    }
+
+    if(idreceived[0] && idreceived[1] && idreceived[2] && idreceived[3] && idreceived[4]) {
+        return 0;
+    }
+    fprintf(stderr, "Error parsing /framectrdata/ttnConnection.conf. Did not receive all ids! Exiting...\n");
+    return 1;
+}
 
 void LMIC_setup() {
     // Reset the MAC state. Session and pending data transfers will be discarded.
@@ -343,6 +414,11 @@ while(true) {
 
 int main() {
   setvbuf(stdout, NULL, _IONBF, 0);
+
+  if(readTTNConnectionDataFromFile() != 0) {
+      return 1;
+  }
+
   setup();
 
   //signal(SIGINT, initHandler);
