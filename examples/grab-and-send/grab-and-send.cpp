@@ -28,6 +28,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <regex.h>
 #include <wiringPi.h>
 #include <lmic.h>
 #include <hal.h>
@@ -206,6 +207,28 @@ void updateFramectrs() {
     fclose(fp);
 }
 
+//param datastr null terminated string
+bool validateCommand(char* datastr) {
+    regex_t regex;
+    int reti;
+    reti = regcomp(&regex, "^bluetooth: (on|off|clearregistry|register ([0-9a-fA-F][0-9a-fA-F]:){5}([0-9a-fA-F][0-9a-fA-F]))$", REG_EXTENDED);
+    if (reti) {
+        fprintf(stderr, "Could not compile regex\n");
+        return false;
+    }
+    reti = regexec(&regex, datastr, 0, NULL, 0);
+    if(!reti) {
+        return true;
+    } else if(reti == REG_NOMATCH) {
+        return false;
+    } else {
+        char msgbuf[100];
+        regerror(reti, &regex, msgbuf, sizeof(msgbuf));
+        fprintf(stderr, "Regex match failed: %s\n", msgbuf);
+        return false;
+    }
+}
+
 void processReceivedData(char* data, int len) {
     fprintf(stdout, "Got data bytes: ");
     for(int i=0; i<len; i++) {
@@ -213,31 +236,25 @@ void processReceivedData(char* data, int len) {
     }
     fprintf(stdout, "\n");
 
-    /* Turn bluetooth on or off */
-    if(strncmp(data, "bluetooth:", 10) == 0) {
-        char* token;
-        char  datacpy[len];
-        memcpy(datacpy, data, len);
-        //Get the 2nd part of the string
-        token = strtok(datacpy, " ");
-        token = strtok(NULL, " ");
-        if(token == NULL) {
-            fprintf(stdout, "Invalid command received via LoRaWAN!\n");
+    char datastr[len+1];
+    memcpy(datastr, data, len);
+    datastr[len] = '\0';
+    if(validateCommand(datastr)) {
+        FILE* updatefp = fopen("/framectrdata/update.command", "w");
+        if(updatefp == NULL) {
+            fprintf(stdout, "Error: Could not open /framectrdata/update.command for writing!\n");
         } else {
-            if(strncmp(token, "on", 2) == 0 || strncmp(token, "off", 3) == 0) {
-                //Valid command -> update command file
-                FILE* updatefp = fopen("/framectrdata/update.command", "w");
-                if(updatefp == NULL) {
-                    fprintf(stdout, "Error: Could not open /framectrdata/update.command for writing!\n");
-                } else {
-                    fprintf(updatefp, "%s", data);
-                    fprintf(stdout, "Wrote to command file: '%s'\n", data);
-                }
-                fclose(updatefp);
-            } else {
-                fprintf(stdout, "Invalid option '%s' for 'bluetooth' command received!\n", token);
-            }
+            fprintf(updatefp, "%s", datastr);
+            fprintf(stdout, "Wrote to command file: '%s'\n", datastr);
         }
+        fclose(updatefp);
+    } else {
+        fprintf(stdout, "Invalid command '%s' received!\n", data);
+        fprintf(stdout, "Available options are:\n");
+        fprintf(stdout, "\tbluetooth: on\n");
+        fprintf(stdout, "\tbluetooth: off\n");
+        fprintf(stdout, "\tbluetooth: register {MAC-Address}\n");
+        fprintf(stdout, "\tbluetooth: clearregistry\n");
     }
 }
 
