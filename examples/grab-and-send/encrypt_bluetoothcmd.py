@@ -1,36 +1,9 @@
 import sys
 import argparse
 import binascii
-import base64
-import hashlib
-from Crypto import Random
-from Crypto.Cipher import AES
-
-# From: https://stackoverflow.com/questions/12524994/encrypt-decrypt-using-pycrypto-aes-256
-class AESCipher(object):
-
-    def __init__(self, key):
-        self.bs = 32
-        self.key = hashlib.sha256(key.encode()).digest()
-
-    def encrypt(self, raw):
-        raw = self._pad(raw)
-        iv = Random.new().read(AES.block_size)
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        return base64.b64encode(iv + cipher.encrypt(raw))
-
-    def decrypt(self, enc):
-        enc = base64.b64decode(enc)
-        iv = enc[:AES.block_size]
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        return self._unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
-
-    def _pad(self, s):
-        return s + (self.bs - len(s) % self.bs) * chr(self.bs - len(s) % self.bs)
-
-    @staticmethod
-    def _unpad(s):
-        return s[:-ord(s[len(s)-1:])]
+import string
+from Crypto.Random import random
+import pyffx
 
 if __name__=="__main__":
     ap = argparse.ArgumentParser(description="Encrypt a bluetooth command with a given key.")
@@ -40,18 +13,28 @@ if __name__=="__main__":
     ap.add_argument('--encrypt', help='Encrypt the given text', action="store_true")
     ap.add_argument('--decrypt', help='Decrypt the given text', action="store_true")
     args = ap.parse_args()
-    cipher = AESCipher(args.key)
+    alphabet = 'abcdefghijklmnopqrstuvwxyz1234567890: |'
+    cipher = pyffx.String(args.key.encode(sys.getdefaultencoding()), alphabet=alphabet, length=50)
     if args.encrypt and not args.decrypt:
-        encrypted = cipher.encrypt(args.text)
+        entropy = ''
+        for i in range(50 - 1 - len(args.text)):
+            entropy += random.choice(alphabet)
+        text = args.text.lower() + '|' + entropy
+        encrypted = cipher.encrypt(text)
         hexout = binascii.hexlify(encrypted)
         if not args.silent:
+            print('Text to encrypt:\n' + text)
+            print('Encrypted:\n' + encrypted)
             print('Encrypted text as hex string:\n' + hexout)
-            print('Bytes: ' + str(len(hexout)))
+            print('Bytes: ' + str(len(hexout) // 2))
         else:
             print(hexout)
     elif args.decrypt:
-        decrypted = cipher.decrypt(binascii.unhexlify(args.text))
+        input = binascii.unhexlify(args.text).decode(sys.getdefaultencoding())
+        decrypted = cipher.decrypt(input)
+        decrypted = decrypted[:decrypted.find('|')]
         if not args.silent:
+            print('Text to decrypt:\n' + str(input))
             print('Decrypted text:\n' + decrypted)
         else:
             print(decrypted)

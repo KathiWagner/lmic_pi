@@ -229,16 +229,70 @@ bool validateCommand(char* datastr) {
     }
 }
 
+void rstrip(char* buff) {
+    char* pos;
+    if ((pos=strchr(buff, '\n')) != NULL) {
+        *pos = '\0';
+    }
+}
+
 void processReceivedData(char* data, int len) {
+    char command[len + 200];
+    size_t cx = 0;
     fprintf(stdout, "Got data bytes: ");
+    //Prepare command with AES key
+    FILE* keyfp = fopen("/framectrdata/cryptokey.txt", "r");
+    char key[17];
+    if(fgets(key, sizeof(key), keyfp) == NULL) {
+        fprintf(stderr, "Error: Could not find /framectrdata/cryptokey.txt. Cannot decrypt incoming messages!");
+        return;
+    }
+    fclose(keyfp);
+    rstrip(key);
+    cx += snprintf(command + cx, sizeof(command) - cx, "python3 encrypt_bluetoothcmd.py --decrypt --silent -k \"%s\" -t \"", key);
     for(int i=0; i<len; i++) {
         fprintf(stdout, "%02X", data[i]);
+        cx += snprintf(command + cx, sizeof(command) - cx, "%X", data[i]);
     }
     fprintf(stdout, "\n");
+    cx += snprintf(command + cx, sizeof(command) - cx, "\"");
 
-    char datastr[len+1];
-    memcpy(datastr, data, len);
-    datastr[len] = '\0';
+    fprintf(stdout, "Running decypher command: %s\n", command);
+    FILE* decryptp;
+    char rawdata[255];
+    decryptp = popen(command, "r");
+    if(decryptp == NULL) {
+        fprintf(stderr, "Error: Running decyper command failed. Exiting!\n");
+        return;
+    }
+    if(fgets(rawdata, sizeof(rawdata)-1, decryptp) == NULL) {
+        fprintf(stderr, "Error: Decrypt command did not return a valid result!\n");
+        return;
+    }
+    fclose(decryptp);
+    rstrip(rawdata);
+    fprintf(stdout, "Got raw message: '%s'\n", rawdata);
+    //Compare downframes
+    long downframesTTN = strtol(rawdata, NULL, 10);
+    u4_t downframesLocal = LMIC.seqnoDn - 1; //Because the current downframe should not yet be counted
+    fprintf(stdout, "Downframes TTN: %ld, downframes local: %u\n", downframesTTN, LMIC.seqnoDn);
+    if(downframesLocal > (u4_t) downframesTTN) {
+        fprintf(stderr, "Warning: Mismatching downframes between TTN and local. Message will not be processed further!\n");
+        return;
+    }
+
+    if(LMIC.seqnoDn < (u4_t) downframesTTN) {
+        // Some downframe messages were not received -> synchronize
+        LMIC.seqnoDn = (u4_t) downframesTTN;
+        updateFramectrs();
+    }
+
+    char* datastr = strstr(rawdata, " ") + 1;
+    fprintf(stdout, "Raw command: '%s'\n", datastr);
+
+    //char datastr[len+1];
+    //memcpy(datastr, data, len);
+    //datastr[len] = '\0';
     if(validateCommand(datastr)) {
         FILE* updatefp = fopen("/framectrdata/update.command", "w");
         if(updatefp == NULL) {
@@ -249,7 +303,7 @@ void processReceivedData(char* data, int len) {
         }
         fclose(updatefp);
     } else {
-        fprintf(stdout, "Invalid command '%s' received!\n", data);
+        fprintf(stdout, "Invalid command '%s' received!\n", datastr);
         fprintf(stdout, "Available options are:\n");
         fprintf(stdout, "\tbluetooth: on\n");
         fprintf(stdout, "\tbluetooth: off\n");
