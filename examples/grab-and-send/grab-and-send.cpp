@@ -73,8 +73,11 @@ void os_getDevKey (u1_t* buf) {
     memcpy(buf, DEVKEY, 16);
 }
 
+const char optionfilepath[] = "/framectrdata/grab-and-send.conf";
+char measurementpath[1024] = "measurement.txt";
+u4_t sendinterval = 30;
 u4_t cntr=0;
-u1_t senddata[] = {"No data yet!                               "};
+u1_t senddata[51] = "No data yet!                               ";
 u4_t senddatalen = 0;
 long long lasttime = 0;
 //FILE* howmanyprocess;
@@ -389,50 +392,28 @@ static void do_send(osjob_t* j){
       time_t t=time(NULL);
       fprintf(stdout, "[%x] (%ld) %s\n", hal_ticks(), t, ctime(&t));
 
-      /* Gather data */
-     /* FILE* fp;
-      char buf[1024];
-
-      fp = popen("howmanypeoplearearound -a wlan0 --number --allmacaddresses", "r");
-      if (fp == NULL) {
-          printf("Failure running howmanypeoplearearound!");
-      }
-      // Get output line by line
-      bool numline = false;
-      bool numfound = false;
-      unsigned char numpeople;
-      while(fgets(buf, sizeof(buf), fp) != NULL) {
-          if(!numline) {
-              numline = true;
-          } else {
-              numpeople = atoi(buf);
-              printf("Found %d people\n", numpeople);
-              numfound = true;
-          }
-      }
-
-      pclose(fp); */
-
       FILE* fp;
-      fp = fopen("people.txt", "r");
+      fp = fopen(measurementpath, "r");
       char buf[1024];
       long long time = -1;
-      int people = -1;
+      char* payloadstr;
       if(fp != NULL) {
           // Get output line by line
           while(fgets(buf, sizeof(buf), fp) != NULL) {
               char* pEnd;
               time = strtoll(buf, &pEnd, 10);
-              people = (int) strtol(pEnd, NULL, 10);
+              payloadstr = strtok(pEnd, " \t\r\n\f\v");
           }
           fclose(fp);
       }
-      printf("Got time: %lld people: %d from file\n", time, people);
+      printf("Got time: %lld payload: %s from file\n", time, payloadstr);
 
       /* Write data to send */
-      if(time > lasttime && people >= 0) {
-          senddatalen = 1;
-          senddata[0] = (unsigned char)people;
+      if(time > lasttime && strlen(payloadstr) >= 0) {
+          senddatalen = strlen(payloadstr) / 2;
+          for(int i=0; i<senddatalen; i++) {
+            sscanf(&payloadstr[i * 2], "%x", &senddata[i]);
+          }
       } else {
           senddatalen = 0;
       }
@@ -482,22 +463,75 @@ while(true) {
     exit(0);
 }*/
 
+void fillOptions() {
+    FILE* optionsfp = fopen(optionfilepath, "r");
+    if(optionsfp != NULL) {
+        //Read optionsfile completely
+        fseek(optionsfp, 0, SEEK_END);
+        size_t fsize = ftell(optionsfp);
+        fseek(optionsfp, 0, SEEK_SET);
+
+        char buf[fsize+1];
+        fread(buf, fsize, 1, optionsfp);
+        fclose(optionsfp);
+
+        buf[fsize] = '\0';
+        //Break down options
+        char* token = strtok(buf, " \t\r\n\f\v");
+        while(token != NULL) {
+            //Parse valid options
+            if(token == "-o") {
+                token = strtok(NULL, " \t\r\n\f\v");
+                if(token != NULL) {
+                    if(strlen(token) > sizeof (measurementpath)) {
+                        fprintf(stderr, "Error parsing %s: path to measurement file too long. "
+                                       "Max %d characters are allowed!", optionfilepath,
+                                        sizeof (measurementpath));
+                        token = NULL;
+                    } else {
+                        strcpy(measurementpath, token);
+                    }
+                }
+            } else if(token == "-t") {
+                token = strtok(NULL, " \t\r\n\f\v");
+                if(token != NULL) {
+                    long tmp = strtol(token, NULL, 10);
+                    if(tmp > 0) {
+                        sendinterval = (u4_t) tmp;
+                    } else {
+                        fprintf(stderr, "Error parsing %s: -t option is no valid integer",
+                                        optionfilepath);
+                        token = NULL;
+                    }
+                }
+            }
+            //Get next option if any
+            if(token != NULL) {
+                token = strtok(NULL, " \t\r\n\f\v");
+            }
+        }
+    }
+}
+
 
 int main() {
-  setvbuf(stdout, NULL, _IONBF, 0);
 
-  if(readTTNConnectionDataFromFile() != 0) {
+    fillOptions();
+
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    if(readTTNConnectionDataFromFile() != 0) {
       return 1;
-  }
+    }
 
-  setup();
+    setup();
 
-  //signal(SIGINT, initHandler);
-  //howmanyprocess = popen("python3 write_people_to_file.py", "r");
+    //signal(SIGINT, initHandler);
+    //howmanyprocess = popen("python3 write_people_to_file.py", "r");
 
-  while (true) {
+    while (true) {
     loop();
-  }
-  return 0;
+    }
+    return 0;
 }
 
