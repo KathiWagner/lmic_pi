@@ -28,6 +28,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <unistd.h>
 #include <regex.h>
 #include <wiringPi.h>
 #include <lmic.h>
@@ -74,7 +75,7 @@ void os_getDevKey (u1_t* buf) {
 }
 
 const char optionfilepath[] = "/framectrdata/grab-and-send.conf";
-char measurementpath[1024] = "measurement.txt";
+char measurementpath[1024];
 u4_t sendinterval = 30;
 u4_t cntr=0;
 u1_t senddata[51] = "No data yet!                               ";
@@ -517,8 +518,22 @@ void fillOptions() {
     }
 }
 
+void getDefaultMeasurementPath() {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        fprintf(stdout, "Current working dir: %s\n", cwd);
+    } else {
+        fprintf(stdout, "Could not get cwd");
+    }
+
+    strcpy(measurementpath, cwd);
+    strcpy(measurementpath, "measurement.txt");
+}
+
 
 int main() {
+
+    getDefaultMeasurementPath();
 
     fillOptions();
 
