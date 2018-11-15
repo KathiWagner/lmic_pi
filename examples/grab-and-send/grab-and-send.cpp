@@ -405,34 +405,38 @@ static void do_send(osjob_t* j){
               payloadstr = strtok(pEnd, " \t\r\n\f\v");
           }
           fclose(fp);
-      }
-      printf("Got time: %lld payload: %s from file\n", time, payloadstr);
 
-      /* Write data to send */
-      if(time > lasttime && strlen(payloadstr) >= 0) {
-          senddatalen = strlen(payloadstr) / 2;
-          for(int i=0; i<senddatalen; i++) {
-            sscanf(&payloadstr[i * 2], "%x", &senddata[i]);
+          /* Write data to send */
+          if(time > lasttime && strlen(payloadstr) >= 0) {
+              senddatalen = strlen(payloadstr) / 2;
+              for(int i=0; i<senddatalen; i++) {
+                sscanf(&payloadstr[i * 2], "%x", &senddata[i]);
+              }
+          } else {
+              senddatalen = 0;
           }
+
+          /* Send data */
+
+          // Show TX channel (channel numbers are local to LMIC)
+          // Check if there is not a current TX/RX job running
+        if (LMIC.opmode & (1 << 7)) {
+          fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
+          LMIC_setup();
+        } else if(senddatalen > 0) {
+          // Prepare upstream data transmission at the next possible time.
+          LMIC_setTxData2(1, senddata, senddatalen, 0);
+          //set last transmitted time
+          lasttime = time;
+        }
       } else {
-          senddatalen = 0;
+          fprintf(stdout, "Could not open measurementfile at path: %s\n", measurementpath);
       }
+      fprintf(stdout, "Got time: %lld payload: %s from file\n", time, payloadstr);
 
-      /* Send data */
 
-      // Show TX channel (channel numbers are local to LMIC)
-      // Check if there is not a current TX/RX job running
-    if (LMIC.opmode & (1 << 7)) {
-      fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
-      LMIC_setup();
-    } else if(senddatalen > 0) {
-      // Prepare upstream data transmission at the next possible time.
-      LMIC_setTxData2(1, senddata, senddatalen, 0);
-      //set last transmitted time
-      lasttime = time;
-    }
     // Schedule a timed job to run at the given timestamp (absolute system time)
-    os_setTimedCallback(j, os_getTime()+sec2osticks(30), do_send);
+    os_setTimedCallback(j, os_getTime()+sec2osticks(sendinterval), do_send);
 
 }
 
