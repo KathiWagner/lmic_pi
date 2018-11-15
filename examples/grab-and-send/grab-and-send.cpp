@@ -421,19 +421,21 @@ static void do_send(osjob_t* j){
 
           // Show TX channel (channel numbers are local to LMIC)
           // Check if there is not a current TX/RX job running
-        if (LMIC.opmode & (1 << 7)) {
-          fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
-          LMIC_setup();
-        } else if(senddatalen > 0) {
-          // Prepare upstream data transmission at the next possible time.
-          LMIC_setTxData2(1, senddata, senddatalen, 0);
-          //set last transmitted time
-          lasttime = time;
-        }
+            if (LMIC.opmode & (1 << 7)) {
+              fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
+              LMIC_setup();
+            } else if(senddatalen > 0) {
+              // Prepare upstream data transmission at the next possible time.
+              LMIC_setTxData2(1, senddata, senddatalen, 0);
+              //set last transmitted time
+              lasttime = time;
+            }
+            fprintf(stdout, "Got time: %lld payload: %s from file\n", time, payloadstr);
+
       } else {
-          fprintf(stdout, "Could not open measurementfile at path: %s\n", measurementpath);
+          fprintf(stderr, "Could not open measurementfile at path: %s\n", measurementpath);
       }
-      fprintf(stdout, "Got time: %lld payload: %s from file\n", time, payloadstr);
+
 
 
     // Schedule a timed job to run at the given timestamp (absolute system time)
