@@ -173,7 +173,7 @@ static void do_send(osjob_t* j){
       // Check if there is not a current TX/RX job running
     if (LMIC.opmode & (1 << 7)) {
       fprintf(stdout, "OP_TXRXPEND, not sending. Resetting...");
-      //LMIC_reset();
+      LMIC_reset();
     } else if(senddatalen > 0) {
       // Prepare upstream data transmission at the next possible time.
       LMIC_setTxData2(1, senddata, senddatalen, 0);
