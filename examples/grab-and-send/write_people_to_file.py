@@ -22,7 +22,7 @@ except:
    pass
 while 1:
    try:
-         sp = subprocess.Popen(["howmanypeoplearearound", "-a", "wlan0", "-o","OutputFile","--allmacaddresses"], stdout=subprocess.PIPE)
+         sp = subprocess.Popen(["howmanypeoplearearound", "-a", "wlan0", "-o","OutputFile","--number","--allmacaddresses"], stdout=subprocess.PIPE)
          out, err = sp.communicate()
          peopleout = out.decode('ascii')         
          print('Got output:\n' + peopleout)
